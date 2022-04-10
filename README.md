@@ -2,7 +2,7 @@
 # Family Tree GraphQL API
 Database model
  
-![Diagram](/images/family-tree-diagram.PNG.PNG?raw=true "Diagram")
+![Diagram](/images/family-tree-diagram.PNG?raw=true "Diagram")
 
 ## Installation
 
