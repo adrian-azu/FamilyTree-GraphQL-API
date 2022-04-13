@@ -4,16 +4,6 @@ Database model
  
 ![Diagram](/images/family-tree-diagram.PNG?raw=true "Diagram")
 
-## Installation
-
-Install my-project with npm
-
-```bash
-  npm install my-project
-  cd my-project
-```
-
-
 ## Run Locally
 
 Clone the project
