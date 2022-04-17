@@ -42,11 +42,17 @@ enum Gender {
   Other
 }
 
+enum Member{
+  child
+  father
+  mother
+}
+
 input PersonInput {
-  firstName: String!
-  lastName: String!
-  gender: Gender!
-  born: Date!
+  firstName: String
+  lastName: String
+  gender: Gender
+  born: Date
   died: Date
 }
 
@@ -59,17 +65,17 @@ type Family {
 }
 
 input FamilyInput {
-  familyName: String!
+  familyName: String
   mother: ID
   father: ID
-  children: [ID]
+  children: [ID!]
 }
 
 type Query {
   persons(limit: Int, index: Int): [Person]
   person(id: ID!): Person
   families(limit: Int, index: Int): [Family]
-  family(familyName: String!): [Family]
+  family(id: ID!, as: Member!): Family
 }
 
 type Mutation {
@@ -87,3 +93,4 @@ schema {
   mutation: Mutation
 }
 `);
+String

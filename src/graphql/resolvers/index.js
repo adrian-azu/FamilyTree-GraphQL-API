@@ -3,7 +3,8 @@ const _ = require('lodash');
 const Person = require('../../models/Person');
 const Parent = require('../../models/Parent');
 const Family = require('../../models/Family');
-const { metadata, paginate } = require('../../utils');
+const { to } = require('../../utils');
+const mongoose = require('mongoose');
 const prepare = (o) => {
   o._id = o._id.toString();
   return o;
@@ -30,94 +31,6 @@ module.exports = {
       throw error;
     }
   },
-
-  // parents: async ({ limit, index }) => {
-  //   try {
-  //     return (await Parent.find().limit(parseInt(limit)).skip(parseInt(index))).map(prepare);
-  //   } catch (error) {
-  //     throw error;
-  //   }
-  // },
-
-  // parent: async (args) => {
-  //   const { id } = args;
-  //   try {
-  //     const res = await Parent.findById(id);
-  //     return res;
-  //   } catch (error) {
-  //     throw error;
-  //   }
-  // },
-
-  // personParents: async (args) => {
-  //   const { id } = args;
-  //   try {
-  //     const res = await Parent.aggregate([
-  //       {
-  //         $match: {
-  //           personId: mongoose.Types.ObjectId(id),
-  //         },
-  //       },
-  //       {
-  //         $lookup: {
-  //           from: 'individuals',
-  //           localField: 'parentId',
-  //           foreignField: '_id',
-  //           as: 'parentId',
-  //         },
-  //       },
-  //       {
-  //         $lookup: {
-  //           from: 'individuals',
-  //           localField: 'personId',
-  //           foreignField: '_id',
-  //           as: 'person',
-  //         },
-  //       },
-  //       {
-  //         $unwind: '$parentId',
-  //       },
-  //       {
-  //         $unwind: '$person',
-  //       },
-  //       {
-  //         $unset: 'personId',
-  //       },
-  //       {
-  //         $group: {
-  //           _id: '$person',
-  //           type: { $addToSet: '$type' },
-  //           parents: {
-  //             $push: {
-  //               _id: '$parentId._id',
-  //               type: '$type',
-  //               firstName: '$parentId.firstName',
-  //               lastName: '$parentId.lastName',
-  //               gender: '$parentId.gender',
-  //               born: '$parentId.born',
-  //               died: '$parentId.died',
-  //             },
-  //           },
-  //         },
-  //       },
-  //       {
-  //         $project: {
-  //           _id: '$_id._id',
-  //           firstName: '$_id.firstName',
-  //           lastName: '$_id.lastName',
-  //           gender: '$_id.gender',
-  //           born: '$_id.born',
-  //           died: '$_id.died',
-  //           parents: 1,
-  //         },
-  //       },
-  //     ]);
-  //     return res;
-  //   } catch (error) {
-  //     console.log(error);
-  //     throw error;
-  //   }
-  // },
 
   families: async ({ index, limit }) => {
     limit = limit ?? 999;
@@ -150,27 +63,42 @@ module.exports = {
             },
           },
           {
-            $unwind: '$mother',
+            $unwind: { path: '$mother', preserveNullAndEmptyArrays: true },
           },
           {
-            $unwind: '$father',
+            $unwind: { path: '$father', preserveNullAndEmptyArrays: true },
           },
         ])
           .allowDiskUse(true)
           .limit(parseInt(limit))
           .skip(parseInt(index))
       ).map(prepare);
+      console.log(res);
       return res;
     } catch (error) {
       throw error;
     }
   },
 
-  family: async (args) => {
-    const { familyName } = args;
+  family: async ({ id, as }) => {
+    if (as === 'child') {
+      as = {
+        children: { $elemMatch: { _id: mongoose.Types.ObjectId(id) } },
+      };
+    } else {
+      if (as === 'father') {
+        as = { father: mongoose.Types.ObjectId(id) };
+      } else {
+        as = { mother: mongoose.Types.ObjectId(id) };
+      }
+    }
     try {
       const res = await Family.aggregate([
-        { $match: { familyName } },
+        {
+          $match: {
+            ...as,
+          },
+        },
         {
           $lookup: {
             from: 'individuals',
@@ -196,14 +124,13 @@ module.exports = {
           },
         },
         {
-          $unwind: '$mother',
+          $unwind: { path: '$mother', preserveNullAndEmptyArrays: true },
         },
         {
-          $unwind: '$father',
+          $unwind: { path: '$father', preserveNullAndEmptyArrays: true },
         },
       ]);
-
-      return res;
+      return { ...(res[0] || null) };
     } catch (error) {
       throw error;
     }
@@ -229,7 +156,7 @@ module.exports = {
 
   updatePerson: async (args) => {
     try {
-      const res = await Person.findByIdAndUpdate(args.id, { $set: args.person });
+      const res = await Person.findByIdAndUpdate(args.id, { $set: args.person }, { new: true });
       return res;
     } catch (error) {
       throw error;
@@ -238,7 +165,7 @@ module.exports = {
 
   updateFamily: async (args) => {
     try {
-      const res = await Family.findByIdAndUpdate(args.id, { $set: args.family });
+      const res = await Family.findByIdAndUpdate(args.id, { $set: args.family }, { new: true });
       return res;
     } catch (error) {
       throw error;
@@ -246,19 +173,34 @@ module.exports = {
   },
 
   deletePerson: async (args) => {
-    try {
-      const { id } = args;
-      const res = await Person.findByIdAndDelete(id);
-      return res;
-    } catch (error) {
-      throw error;
-    }
+    const { id } = args;
+    let [error, res] = await to(Person.findByIdAndDelete(id));
+    if (error) throw new Error(error);
+    if (_.isEmpty(res)) return 'Person not found';
+    [error] = await to(
+      Family.deleteMany({
+        $or: [
+          {
+            father: mongoose.Types.ObjectId(res._id),
+          },
+          {
+            mother: mongoose.Types.ObjectId(res._id),
+          },
+          {
+            children: { $elemMatch: { _id: mongoose.Types.ObjectId(id) } },
+          },
+        ],
+      })
+    );
+    if (error) throw new Error(error);
+    return 'Successfully deleted';
   },
 
   deleteFamily: async (args) => {
     try {
       const res = await Family.findByIdAndDelete(args.id);
-      return res;
+      if (_.isEmpty(res)) return 'Family not found';
+      return 'Successfully deleted';
     } catch (error) {
       throw error;
     }
